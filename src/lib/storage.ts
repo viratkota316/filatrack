@@ -1,4 +1,5 @@
 import { FilamentSpool, PrintTask, Project } from "./types";
+import { defaultSpools } from "./seedData";
 
 function getItem<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -44,7 +45,18 @@ export function clearAuth() {
 // ---- Spools ----
 
 export function getSpools(): FilamentSpool[] {
-  return getItem<FilamentSpool[]>("spools", []);
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem("spools");
+  if (!raw) {
+    // First visit — seed with default inventory
+    saveSpools(defaultSpools);
+    return [...defaultSpools];
+  }
+  try {
+    return JSON.parse(raw) as FilamentSpool[];
+  } catch {
+    return [];
+  }
 }
 
 export function saveSpools(spools: FilamentSpool[]) {
