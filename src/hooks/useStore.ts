@@ -20,6 +20,9 @@ export function useAuth() {
   const [uid, setUid] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [tfaKey, setTfaKey] = useState<string | null>(null);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   useEffect(() => {
     setToken(storage.getAuthToken());
@@ -29,6 +32,7 @@ export function useAuth() {
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true);
     setError(null);
+    setNeedsVerification(false);
     try {
       const res = await fetch("/api/bambu/login", {
         method: "POST",
@@ -37,6 +41,14 @@ export function useAuth() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
+
+      if (data.needsVerification) {
+        setNeedsVerification(true);
+        setTfaKey(data.tfaKey);
+        setPendingEmail(email);
+        return;
+      }
+
       storage.setAuthToken(data.token);
       storage.setAuthUID(data.uid);
       localStorage.setItem("bambu_email", email);
@@ -47,6 +59,40 @@ export function useAuth() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const verifyCode = useCallback(async (code: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/bambu/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: pendingEmail, code, tfaKey }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Verification failed");
+
+      storage.setAuthToken(data.token);
+      storage.setAuthUID(data.uid);
+      if (pendingEmail) localStorage.setItem("bambu_email", pendingEmail);
+      setToken(data.token);
+      setUid(data.uid);
+      setNeedsVerification(false);
+      setTfaKey(null);
+      setPendingEmail(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Verification failed");
+    } finally {
+      setLoading(false);
+    }
+  }, [pendingEmail, tfaKey]);
+
+  const cancelVerification = useCallback(() => {
+    setNeedsVerification(false);
+    setTfaKey(null);
+    setPendingEmail(null);
+    setError(null);
   }, []);
 
   const logout = useCallback(() => {
@@ -61,7 +107,10 @@ export function useAuth() {
     isLoggedIn: !!token,
     loading,
     error,
+    needsVerification,
     login,
+    verifyCode,
+    cancelVerification,
     logout,
   };
 }

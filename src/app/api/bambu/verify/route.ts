@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await req.json();
+    const { email, code, tfaKey } = await req.json();
 
-    // Step 1: Login
-    const loginRes = await fetch(
+    // Send verification code to Bambu Lab
+    const verifyRes = await fetch(
       "https://api.bambulab.com/v1/user-service/user/login",
       {
         method: "POST",
@@ -13,53 +13,42 @@ export async function POST(req: NextRequest) {
           "Content-Type": "application/json",
           "User-Agent": "FilaTrack/1.0",
         },
-        body: JSON.stringify({ account: email, password }),
+        body: JSON.stringify({ account: email, code, tfaKey }),
       }
     );
 
-    const loginText = await loginRes.text();
-    let loginData;
+    const verifyText = await verifyRes.text();
+    let verifyData;
     try {
-      loginData = JSON.parse(loginText);
+      verifyData = JSON.parse(verifyText);
     } catch {
       return NextResponse.json(
-        { error: `Bambu Lab returned invalid response (${loginRes.status})` },
+        { error: `Bambu Lab returned invalid response (${verifyRes.status})` },
         { status: 502 }
       );
     }
 
-    if (!loginRes.ok) {
+    if (!verifyRes.ok) {
       const msg =
-        loginData?.message ||
-        loginData?.error ||
-        `Login failed (status ${loginRes.status})`;
-      return NextResponse.json({ error: msg }, { status: loginRes.status });
+        verifyData?.message ||
+        verifyData?.error ||
+        `Verification failed (status ${verifyRes.status})`;
+      return NextResponse.json({ error: msg }, { status: verifyRes.status });
     }
 
-    // The token can be in different fields depending on API version
     const token =
-      loginData.accessToken ||
-      loginData.token ||
-      loginData.access_token;
+      verifyData.accessToken ||
+      verifyData.token ||
+      verifyData.access_token;
 
     if (!token) {
-      // Bambu Lab requires email verification code
-      if (loginData.loginType === "verifyCode" || loginData.tfaKey) {
-        return NextResponse.json(
-          {
-            needsVerification: true,
-            tfaKey: loginData.tfaKey || "",
-          },
-          { status: 200 }
-        );
-      }
       return NextResponse.json(
-        { error: "Login succeeded but no token returned. Try again." },
+        { error: "Verification succeeded but no token returned." },
         { status: 502 }
       );
     }
 
-    // Step 2: Get UID
+    // Get UID
     let uid = "";
     try {
       const prefRes = await fetch(
@@ -76,7 +65,7 @@ export async function POST(req: NextRequest) {
         uid = String(prefData.uid || prefData.id || "");
       }
     } catch {
-      // UID fetch is non-critical, continue without it
+      // UID fetch is non-critical
     }
 
     return NextResponse.json({ token, uid });
