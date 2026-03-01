@@ -57,7 +57,9 @@ export default function LoginForm({ auth }: Props) {
           </div>
 
           {auth.error && (
-            <p className="text-red-500 text-sm">{auth.error}</p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-red-600 text-sm">{auth.error}</p>
+            </div>
           )}
 
           <button
